@@ -27,6 +27,7 @@ ignore = [
     "COM812", # conflict with format
     "T201",   # print is fine
     "ERA001", # commented-out code is fine
+    "ISC001", # conflict with formatter
     "EM102",  # too pedantic
     "TRY003", # too pedantic
     "C901",   # too pedantic

@@ -1,4 +1,9 @@
 import enum
+import sys
+import typing
+
+if typing.TYPE_CHECKING:
+    from .uxn import UXN
 
 
 class ConsoleType(enum.IntEnum):
@@ -10,25 +15,26 @@ class ConsoleType(enum.IntEnum):
 
 
 class Dev(enum.IntEnum):
-    SYSTEM_EXPANSION = 0x02
-    SYSTEM_WST = 0x04
-    SYSTEM_RST = 0x05
-    SYSTEM_METADATA = 0x06
-    SYSTEM_RED = 0x08
-    SYSTEM_GREEN = 0x0A
-    SYSTEM_BLUE = 0x0C
-    SYSTEM_DEBUG = 0x0E
-    SYSTEM_STATE = 0x0F
+    SYS_EXPANSION = 0x02
+    SYS_WST = 0x04
+    SYS_RST = 0x05
+    SYS_METADATA = 0x06
+    SYS_RED = 0x08
+    SYS_GREEN = 0x0A
+    SYS_BLUE = 0x0C
+    SYS_DEBUG = 0x0E
+    SYS_STATE = 0x0F
 
-    CONSOLE_VECTOR = 0x10
-    CONSOLE_READ = 0x12
-    CONSOLE_TYPE = 0x17
-    CONSOLE_WRITE = 0x18
-    CONSOLE_ERROR = 0x19
+    CSL_VECTOR = 0x10
+    CSL_READ = 0x12
+    CSL_TYPE = 0x17
+    CSL_WRITE = 0x18
+    CSL_ERROR = 0x19
 
 
 class Varvara:
-    def __init__(self):
+    def __init__(self, uxn: UXN):
+        self.uxn = uxn
         self.mem = bytearray(0x100)
 
     def set(self, addr: int, x: int, *, short: bool):
@@ -39,8 +45,8 @@ class Varvara:
             self.mem[addr] = x
 
         match addr:
-            case Dev.CONSOLE_WRITE:
-                print(chr(self.mem[addr]), end="")
+            case Dev.CSL_WRITE:
+                sys.stdout.write(chr(self.mem[addr]))
             case _:
                 pass
 

@@ -262,9 +262,7 @@ def case_stack(case: str) -> tuple[bytes, bytes, bytes, int | None]:
 def test_uxn(rom: bytes, wst: bytes, rst: bytes, pc: int | None) -> None:
     uxn = UXN()
     uxn.load(rom)
-
-    while uxn.step():
-        pass
+    uxn.reset()
 
     assert uxn.wst.top == len(wst)
     assert uxn.wst.arr[: uxn.wst.top] == wst

@@ -1,6 +1,7 @@
 import enum
+from typing import TextIO
 
-from .varvara import Varvara
+from .varvara import ConsoleType, Dev, Varvara
 
 
 class StackOverflowError(Exception):
@@ -168,7 +169,7 @@ class UXN:
     PCSTART = 0x100
 
     def __init__(self):
-        self.dev = Varvara()
+        self.dev = Varvara(self)
         self.mem = bytearray(self.MEMSIZE)
         self.wst = Stack(self.STKSIZE)
         self.rst = Stack(self.STKSIZE)
@@ -176,6 +177,39 @@ class UXN:
 
     def load(self, rom: bytes):
         self.mem[self.PCSTART : self.PCSTART + len(rom)] = rom
+
+    def reset(self, args: list[str] | None = None, stdin: TextIO | None = None):
+        args = args or []
+        self.dev.set(Dev.CSL_TYPE, len(args) > 2, short=False)
+        self.eval(self.PCSTART)
+        if self.dev.get(Dev.CSL_VECTOR, short=True):
+            self._console_parse_args(args)
+        if stdin:
+            self._console_read_stdin(stdin)
+
+    def _console_input(self, c: int, t: ConsoleType):
+        self.dev.set(Dev.CSL_TYPE, t, short=False)
+        self.dev.set(Dev.CSL_READ, c, short=False)
+        self.dev.uxn.eval(self.dev.get(Dev.CSL_VECTOR, short=True))
+
+    def _console_parse_args(self, args: list[str]):
+        for i in range(2, len(args)):
+            for c in args[i]:
+                self._console_input(ord(c), ConsoleType.ARGUMENT)
+            self._console_input(
+                0x0A,  # newline
+                (
+                    ConsoleType.ARGUMENT_END
+                    if i + 1 == len(args)
+                    else ConsoleType.ARGUMENT_SPACER
+                ),
+            )
+
+    def _console_read_stdin(self, stdin: TextIO):
+        for line in stdin:
+            for c in line:
+                self._console_input(ord(c), ConsoleType.STDIN)
+            self._console_input(0, ConsoleType.ARGUMENT_END)
 
     def memset(self, addr: int, x: int, *, short: bool):
         if short:
