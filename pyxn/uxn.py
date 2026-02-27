@@ -213,18 +213,18 @@ class UXN:
                 cond8 = wst.pop1()
                 if cond8:
                     addr16 = self.memget(self.pc, short=True)
-                    self.pc += signed2(addr16)
+                    self.pc += 2 + signed2(addr16)
                 else:
                     self.pc += 2
             case Op.JMI, _, _:
                 # ( -- )
                 addr16 = self.memget(self.pc, short=True)
-                self.pc += signed2(addr16)
+                self.pc += 2 + signed2(addr16)
             case Op.JSI, _, _:
                 # ( -- )
                 rst.push2(self.pc + 2)
                 addr16 = self.memget(self.pc, short=True)
-                self.pc += signed2(addr16)
+                self.pc += 2 + signed2(addr16)
             case _, Op.INC, _:
                 # ( a -- a+1 )
                 a = wst.pop() + 1
@@ -386,3 +386,8 @@ class UXN:
                 raise InvalidInstructionError(hex(op))
 
         return True
+
+    def eval(self, addr: int):
+        self.pc = addr
+        while self.step():
+            ...

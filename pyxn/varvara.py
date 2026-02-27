@@ -1,8 +1,25 @@
 import enum
 
 
+class ConsoleType(enum.IntEnum):
+    NO_QUEUE = 0x00
+    STDIN = 0x01
+    ARGUMENT = 0x02
+    ARGUMENT_SPACER = 0x03
+    ARGUMENT_END = 0x04
+
+
 class Dev(enum.IntEnum):
-    CONSOLE = 0x10
+    SYSTEM_EXPANSION = 0x02
+    SYSTEM_WST = 0x04
+    SYSTEM_RST = 0x05
+    SYSTEM_METADATA = 0x06
+    SYSTEM_RED = 0x08
+    SYSTEM_GREEN = 0x0A
+    SYSTEM_BLUE = 0x0C
+    SYSTEM_DEBUG = 0x0E
+    SYSTEM_STATE = 0x0F
+
     CONSOLE_VECTOR = 0x10
     CONSOLE_READ = 0x12
     CONSOLE_TYPE = 0x17
