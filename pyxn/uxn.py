@@ -170,7 +170,8 @@ class UXN:
 
     def __init__(self):
         self.dev = Varvara(self)
-        self.mem = bytearray(self.MEMSIZE)
+        self.arr = bytearray(self.MEMSIZE)
+        self.mem = memoryview(self.arr)
         self.wst = Stack(self.STKSIZE)
         self.rst = Stack(self.STKSIZE)
         self.pc = self.PCSTART
