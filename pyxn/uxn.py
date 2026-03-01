@@ -86,6 +86,14 @@ class Stack:
             self.top = self.ptr
         return (self.arr[self.ptr] << 8) | self.arr[self.ptr + 1]
 
+    def debug(self) -> str:
+        s = "|" if self.top - 8 == 0 else " "
+        for i in range(self.top - 8, self.top):
+            s += f"{self.arr[i]:02x}" if i >= 0 else "00"
+            s += "|" if i == -1 else " "
+        s += f"<{self.top:02x}"
+        return s
+
     def __repr__(self) -> str:
         return str([hex(self.arr[i]) for i in range(self.top)])
 
@@ -163,14 +171,15 @@ def signed2(x: int) -> int:
 
 
 class UXN:
-    DEVSIZE = 0x100  # 256
+    BNKSZIE = 0x10  # 16
     MEMSIZE = 0x10000  # 65536, 64k
+    DEVSIZE = 0x100  # 256
     STKSIZE = 0x100  # 256
     PCSTART = 0x100
 
     def __init__(self):
         self.dev = Varvara(self)
-        self.arr = bytearray(self.MEMSIZE)
+        self.arr = bytearray(self.MEMSIZE * self.BNKSZIE)
         self.mem = memoryview(self.arr)
         self.wst = Stack(self.STKSIZE)
         self.rst = Stack(self.STKSIZE)
@@ -426,3 +435,5 @@ class UXN:
         self.pc = addr
         while self.step():
             ...
+        if (ret := self.dev.mem[Dev.SYS_STATE]) != 0:
+            exit(ret & 0x7F)

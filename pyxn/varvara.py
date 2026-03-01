@@ -15,7 +15,7 @@ def stat(p: pathlib.Path) -> str:
         if (size := p.stat().st_size) > 0xFFFF:
             # larger than 64KB
             return "????"
-        return f"{size:x}".rjust(4, "0").lower()
+        return f"{size:04x}"
     return "!!!!"
 
 
@@ -163,28 +163,53 @@ class Varvara:
             self.mem[addr] = x
 
         match addr:
+            case Dev.SYS_EXPANSION:
+                op = self.uxn.memget(x, short=False)
+                exp = self.uxn.memget(x + 1, short=True)
+                if op == 0x00:
+                    bank = self.uxn.memget(x + 3, short=True)
+                    addr = self.uxn.memget(x + 5, short=True)
+                    val = self.uxn.memget(x + 7, short=False)
+                    dst = bank * self.uxn.MEMSIZE + addr
+                    self.uxn.mem[dst : dst + exp] = val.to_bytes(1) * exp
+                else:
+                    sbank = self.uxn.memget(x + 3, short=True)
+                    saddr = self.uxn.memget(x + 5, short=True)
+                    dbank = self.uxn.memget(x + 7, short=True)
+                    daddr = self.uxn.memget(x + 9, short=True)
+                    src = sbank * self.uxn.MEMSIZE + saddr
+                    dst = dbank * self.uxn.MEMSIZE + daddr
+                    if op == 0x01:
+                        self.uxn.mem[dst : dst + exp] = self.uxn.mem[src : src + exp]
+                    else:
+                        for i in range(exp - 1, -1, -1):
+                            self.uxn.mem[dst + i] = self.uxn.mem[src + i]
+            case Dev.SYS_WST:
+                self.uxn.wst.top = x
+            case Dev.SYS_RST:
+                self.uxn.rst.top = x
+            case Dev.SYS_DEBUG:
+                if x != 0:
+                    print(f"WST{self.uxn.wst.debug()}")
+                    print(f"RST{self.uxn.rst.debug()}")
             case Dev.CSL_WRITE:
-                sys.stdout.write(chr(self.mem[addr]))
+                sys.stdout.write(chr(x))
             case Dev.FIL_NAME:
-                st = self.get(Dev.FIL_NAME, short=True)
-                self.file.setname(self.uxn.mem[st:])
+                self.file.setname(self.uxn.mem[x:])
             case Dev.FIL_READ:
-                st = self.get(Dev.FIL_READ, short=True)
-                ed = st + self.get(Dev.FIL_LENGTH, short=True)
-                sz = self.file.read(self.uxn.mem[st:ed])
+                ed = min(x + self.get(Dev.FIL_LENGTH, short=True), self.uxn.MEMSIZE)
+                sz = self.file.read(self.uxn.mem[x:ed])
                 self.set(Dev.FIL_SUCCESS, sz, short=True)
             case Dev.FIL_WRITE:
-                st = self.get(Dev.FIL_WRITE, short=True)
-                ed = st + self.get(Dev.FIL_LENGTH, short=True)
+                ed = min(x + self.get(Dev.FIL_LENGTH, short=True), self.uxn.MEMSIZE)
                 sz = self.file.write(
-                    self.uxn.mem[st:ed],
+                    self.uxn.mem[x:ed],
                     append=self.get(Dev.FIL_APPEND, short=True) != 0,
                 )
                 self.set(Dev.FIL_SUCCESS, sz, short=True)
             case Dev.FIL_STAT:
-                st = self.get(Dev.FIL_STAT, short=True)
-                ed = st + self.get(Dev.FIL_LENGTH, short=True)
-                sz = self.file.stat(self.uxn.mem[st:ed])
+                ed = min(x + self.get(Dev.FIL_LENGTH, short=True), self.uxn.MEMSIZE)
+                sz = self.file.stat(self.uxn.mem[x:ed])
                 self.set(Dev.FIL_SUCCESS, sz, short=True)
             case Dev.FIL_DELETE:
                 ok = self.file.delete()
@@ -193,6 +218,12 @@ class Varvara:
                 pass
 
     def get(self, addr: int, *, short: bool) -> int:
+        match addr:
+            case Dev.SYS_WST:
+                self.mem[addr] = self.uxn.wst.top
+            case Dev.SYS_RST:
+                self.mem[addr] = self.uxn.rst.top
+
         if short:
             return (self.mem[addr] << 8) | self.mem[addr + 1]
         return self.mem[addr]
