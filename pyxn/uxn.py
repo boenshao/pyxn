@@ -33,8 +33,7 @@ class Stack:
         self.short = short
 
     def modeset(self, *, keep: bool, short: bool):
-        if keep:
-            self.ptr = self.top
+        self.ptr = self.top
         self.keep = keep
         self.short = short
 
@@ -60,8 +59,6 @@ class Stack:
         self.top += 1
 
     def pop1(self) -> int:
-        if not self.keep:
-            self.ptr = self.top
         if self.ptr == 0:
             raise StackUnderflowError
         self.ptr -= 1
@@ -77,8 +74,6 @@ class Stack:
         self.top += 2
 
     def pop2(self) -> int:
-        if not self.keep:
-            self.ptr = self.top
         if self.ptr < 2:
             raise StackUnderflowError
         self.ptr -= 2
@@ -102,6 +97,7 @@ class Mask(enum.IntEnum):
     KEEP = 0b10000000
     RETURN = 0b01000000
     SHORT = 0b00100000
+    MODE = 0b11100000
     CODE = 0b00011111
     LIT = 0b10000000
 
@@ -237,7 +233,9 @@ class UXN:
         op = self.mem[self.pc]
         self.pc += 1
 
-        if op & Mask.RETURN and (op != Op.JSI):
+        imm = op in (Op.JCI, Op.JMI, Op.JSI)
+
+        if not imm and (op & Mask.RETURN):
             wst = self.rst
             rst = self.wst
         else:
@@ -245,8 +243,8 @@ class UXN:
             rst = self.rst
 
         wst.modeset(
-            keep=bool(op & Mask.KEEP),
-            short=bool(op & Mask.SHORT),
+            keep=bool(not imm and (op & Mask.KEEP)),
+            short=bool(not imm and (op & Mask.SHORT)),
         )
 
         match op, (op & Mask.CODE), (op & Mask.LIT):
