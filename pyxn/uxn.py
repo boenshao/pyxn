@@ -157,6 +157,9 @@ class Op(enum.IntEnum):
     SFT = 0x1F
 
 
+IMM = (Op.JCI, Op.JMI, Op.JSI)
+
+
 def signed(x: int) -> int:
     return x - 0x100 if x >= 0x80 else x
 
@@ -179,6 +182,12 @@ class UXN:
         self.wst = Stack(self.STKSIZE)
         self.rst = Stack(self.STKSIZE)
         self.pc = self.PCSTART
+
+        self.vtable = [None] * 256
+        for op in Op:
+            if op == Op.BRK:
+                continue
+            self.vtable[op.value if op != Op.LIT else 0x00] = getattr(self, op.name)
 
     def load(self, rom: bytes):
         self.mem[self.PCSTART : self.PCSTART + len(rom)] = rom
@@ -235,7 +244,7 @@ class UXN:
         if op == Op.BRK:
             return False
 
-        imm = op in (Op.JCI, Op.JMI, Op.JSI)
+        imm = op in IMM
         if not imm and (op & Mask.RETURN):
             wst = self.rst
             rst = self.wst
@@ -248,187 +257,13 @@ class UXN:
             short=bool(not imm and (op & Mask.SHORT)),
         )
 
-        if imm:
-            match op:
-                case Op.JCI:
-                    # ( cond8 -- )
-                    cond8 = wst.pop1()
-                    if cond8:
-                        addr16 = self.memget(self.pc, short=True)
-                        self.pc += 2 + signed2(addr16)
-                    else:
-                        self.pc += 2
-                case Op.JMI:
-                    # ( -- )
-                    addr16 = self.memget(self.pc, short=True)
-                    self.pc += 2 + signed2(addr16)
-                case Op.JSI:
-                    # ( -- )
-                    rst.push2(self.pc + 2)
-                    addr16 = self.memget(self.pc, short=True)
-                    self.pc += 2 + signed2(addr16)
-            return True
+        if not imm:
+            op &= Mask.CODE
 
-        match op & Mask.CODE:
-            case 0x00:  # LIT
-                # ( -- a )
-                a = self.memget(self.pc, short=wst.short)
-                wst.push(a)
-                self.pc += 2 if wst.short else 1
-            case Op.INC:
-                # ( a -- a+1 )
-                a = wst.pop() + 1
-                wst.push(a)
-            case Op.POP:
-                # ( a -- )
-                wst.pop()
-            case Op.NIP:
-                # ( a b -- b )
-                b, _ = wst.pop(), wst.pop()
-                wst.push(b)
-            case Op.SWP:
-                # ( a b -- b a )
-                b, a = wst.pop(), wst.pop()
-                wst.push(b)
-                wst.push(a)
-            case Op.ROT:
-                # ( a b c -- b c a )
-                c, b, a = wst.pop(), wst.pop(), wst.pop()
-                wst.push(b)
-                wst.push(c)
-                wst.push(a)
-            case Op.DUP:
-                # ( a -- a a )
-                a = wst.pop()
-                wst.push(a)
-                wst.push(a)
-            case Op.OVR:
-                # ( a b -- a b a )
-                b, a = wst.pop(), wst.pop()
-                wst.push(a)
-                wst.push(b)
-                wst.push(a)
-            case Op.EQU:
-                # ( a b -- bool8 )
-                b, a = wst.pop(), wst.pop()
-                wst.push1(a == b)
-            case Op.NEQ:
-                # ( a b -- bool8 )
-                b, a = wst.pop(), wst.pop()
-                wst.push1(a != b)
-            case Op.GTH:
-                # ( a b -- bool8 )
-                b, a = wst.pop(), wst.pop()
-                wst.push1(a > b)
-            case Op.LTH:
-                # ( a b -- bool8 )
-                b, a = wst.pop(), wst.pop()
-                wst.push1(a < b)
-            case Op.JMP:
-                # ( addr -- )
-                if wst.short:
-                    self.pc = wst.pop()
-                else:
-                    self.pc += signed(wst.pop())
-            case Op.JCN:
-                # ( cond8 addr -- )
-                addr = wst.pop()
-                cond8 = wst.pop1()
-                if cond8:
-                    if wst.short:
-                        self.pc = addr
-                    else:
-                        self.pc += signed(addr)
-            case Op.JSR:
-                # ( addr -- | ret16 )
-                ret16 = self.pc
-                rst.push2(ret16)
-                addr = wst.pop()
-                if wst.short:
-                    self.pc = addr
-                else:
-                    self.pc += signed(addr)
-            case Op.STH:
-                # ( a -- | a )
-                a = wst.pop()
-                rst.push(a, short=wst.short)
-            case Op.LDZ:
-                # ( addr8 -- val )
-                addr8 = wst.pop1()
-                val = self.memget(addr8, short=wst.short)
-                wst.push(val)
-            case Op.STZ:
-                # ( val addr8 -- )
-                addr8 = wst.pop1()
-                val = wst.pop()
-                self.memset(addr8, val, short=wst.short)
-            case Op.LDR:
-                # ( addr8 -- val )
-                addr8 = wst.pop1()
-                val = self.memget(self.pc + signed(addr8), short=wst.short)
-                wst.push(val)
-            case Op.STR:
-                # ( val addr8 -- )
-                addr8 = wst.pop1()
-                val = wst.pop()
-                self.memset(self.pc + signed(addr8), val, short=wst.short)
-            case Op.LDA:
-                # ( addr16 -- val )
-                addr16 = wst.pop2()
-                val = self.memget(addr16, short=wst.short)
-                wst.push(val)
-            case Op.STA:
-                # ( val addr16 -- )
-                addr16 = wst.pop2()
-                val = wst.pop()
-                self.memset(addr16, val, short=wst.short)
-            case Op.DEI:
-                # ( dev8 -- val )
-                dev8 = wst.pop1()
-                val = self.dev.get(dev8, short=wst.short)
-                wst.push(val)
-            case Op.DEO:
-                # ( val dev8 -- )
-                dev8 = wst.pop1()
-                val = wst.pop()
-                self.dev.set(dev8, val, short=wst.short)
-            case Op.ADD:
-                # ( a b -- a+b )
-                b, a = wst.pop(), wst.pop()
-                wst.push(a + b)
-            case Op.SUB:
-                # ( a b -- a-b )
-                b, a = wst.pop(), wst.pop()
-                wst.push(a - b)
-            case Op.MUL:
-                # ( a b -- a*b )
-                b, a = wst.pop(), wst.pop()
-                wst.push(a * b)
-            case Op.DIV:
-                # ( a b -- a//b )
-                b, a = wst.pop(), wst.pop()
-                wst.push(a // b if b else 0)
-            case Op.AND:
-                # ( a b -- a&b )
-                b, a = wst.pop(), wst.pop()
-                wst.push(a & b)
-            case Op.ORA:
-                # ( a b -- a|b )
-                b, a = wst.pop(), wst.pop()
-                wst.push(a | b)
-            case Op.EOR:
-                # ( a b -- ~(a^b) )
-                b, a = wst.pop(), wst.pop()
-                wst.push(a ^ b)
-            case Op.SFT:
-                # ( a shift8 -- c )
-                shift8, a = wst.pop(short=False), wst.pop()
-                ls, rs = (shift8 >> 4) & 0x0F, shift8 & 0x0F
-                c = a >> rs
-                c = c << ls
-                wst.push(c)
-            case _:
-                raise InvalidInstructionError(hex(op))
+        if f := self.vtable[op]:
+            f(wst, rst)
+        else:
+            raise InvalidInstructionError(f"Invalid instruction: {op:#04x}")
 
         return True
 
@@ -438,3 +273,215 @@ class UXN:
             ...
         if (ret := self.dev.mem[Dev.SYS_STATE]) != 0:
             exit(ret & 0x7F)
+
+    # ruff: disable[N802,ARG002]
+    def LIT(self, wst: Stack, rst: Stack):
+        # ( -- a )
+        a = self.memget(self.pc, short=wst.short)
+        wst.push(a)
+        self.pc += 2 if wst.short else 1
+
+    def JCI(self, wst: Stack, rst: Stack):
+        # ( cond8 -- )
+        cond8 = wst.pop1()
+        if cond8:
+            addr16 = self.memget(self.pc, short=True)
+            self.pc += 2 + signed2(addr16)
+        else:
+            self.pc += 2
+
+    def JMI(self, wst: Stack, rst: Stack):
+        # ( -- )
+        addr16 = self.memget(self.pc, short=True)
+        self.pc += 2 + signed2(addr16)
+
+    def JSI(self, wst: Stack, rst: Stack):
+        # ( -- )
+        rst.push2(self.pc + 2)
+        addr16 = self.memget(self.pc, short=True)
+        self.pc += 2 + signed2(addr16)
+
+    def INC(self, wst: Stack, rst: Stack):
+        # ( a -- a+1 )
+        a = wst.pop() + 1
+        wst.push(a)
+
+    def POP(self, wst: Stack, rst: Stack):
+        # ( a -- )
+        wst.pop()
+
+    def NIP(self, wst: Stack, rst: Stack):
+        # ( a b -- b )
+        b, _ = wst.pop(), wst.pop()
+        wst.push(b)
+
+    def SWP(self, wst: Stack, rst: Stack):
+        # ( a b -- b a )
+        b, a = wst.pop(), wst.pop()
+        wst.push(b)
+        wst.push(a)
+
+    def ROT(self, wst: Stack, rst: Stack):
+        # ( a b c -- b c a )
+        c, b, a = wst.pop(), wst.pop(), wst.pop()
+        wst.push(b)
+        wst.push(c)
+        wst.push(a)
+
+    def DUP(self, wst: Stack, rst: Stack):
+        # ( a -- a a )
+        a = wst.pop()
+        wst.push(a)
+        wst.push(a)
+
+    def OVR(self, wst: Stack, rst: Stack):
+        # ( a b -- a b a )
+        b, a = wst.pop(), wst.pop()
+        wst.push(a)
+        wst.push(b)
+        wst.push(a)
+
+    def EQU(self, wst: Stack, rst: Stack):
+        # ( a b -- bool8 )
+        b, a = wst.pop(), wst.pop()
+        wst.push1(a == b)
+
+    def NEQ(self, wst: Stack, rst: Stack):
+        # ( a b -- bool8 )
+        b, a = wst.pop(), wst.pop()
+        wst.push1(a != b)
+
+    def GTH(self, wst: Stack, rst: Stack):
+        # ( a b -- bool8 )
+        b, a = wst.pop(), wst.pop()
+        wst.push1(a > b)
+
+    def LTH(self, wst: Stack, rst: Stack):
+        # ( a b -- bool8 )
+        b, a = wst.pop(), wst.pop()
+        wst.push1(a < b)
+
+    def JMP(self, wst: Stack, rst: Stack):
+        # ( addr -- )
+        if wst.short:
+            self.pc = wst.pop()
+        else:
+            self.pc += signed(wst.pop())
+
+    def JCN(self, wst: Stack, rst: Stack):
+        # ( cond8 addr -- )
+        addr = wst.pop()
+        cond8 = wst.pop1()
+        if cond8:
+            if wst.short:
+                self.pc = addr
+            else:
+                self.pc += signed(addr)
+
+    def JSR(self, wst: Stack, rst: Stack):
+        # ( addr -- | ret16 )
+        ret16 = self.pc
+        rst.push2(ret16)
+        addr = wst.pop()
+        if wst.short:
+            self.pc = addr
+        else:
+            self.pc += signed(addr)
+
+    def STH(self, wst: Stack, rst: Stack):
+        # ( a -- | a )
+        a = wst.pop()
+        rst.push(a, short=wst.short)
+
+    def LDZ(self, wst: Stack, rst: Stack):
+        # ( addr8 -- val )
+        addr8 = wst.pop1()
+        val = self.memget(addr8, short=wst.short)
+        wst.push(val)
+
+    def STZ(self, wst: Stack, rst: Stack):
+        # ( val addr8 -- )
+        addr8 = wst.pop1()
+        val = wst.pop()
+        self.memset(addr8, val, short=wst.short)
+
+    def LDR(self, wst: Stack, rst: Stack):
+        # ( addr8 -- val )
+        addr8 = wst.pop1()
+        val = self.memget(self.pc + signed(addr8), short=wst.short)
+        wst.push(val)
+
+    def STR(self, wst: Stack, rst: Stack):
+        # ( val addr8 -- )
+        addr8 = wst.pop1()
+        val = wst.pop()
+        self.memset(self.pc + signed(addr8), val, short=wst.short)
+
+    def LDA(self, wst: Stack, rst: Stack):
+        # ( addr16 -- val )
+        addr16 = wst.pop2()
+        val = self.memget(addr16, short=wst.short)
+        wst.push(val)
+
+    def STA(self, wst: Stack, rst: Stack):
+        # ( val addr16 -- )
+        addr16 = wst.pop2()
+        val = wst.pop()
+        self.memset(addr16, val, short=wst.short)
+
+    def DEI(self, wst: Stack, rst: Stack):
+        # ( dev8 -- val )
+        dev8 = wst.pop1()
+        val = self.dev.get(dev8, short=wst.short)
+        wst.push(val)
+
+    def DEO(self, wst: Stack, rst: Stack):
+        # ( val dev8 -- )
+        dev8 = wst.pop1()
+        val = wst.pop()
+        self.dev.set(dev8, val, short=wst.short)
+
+    def ADD(self, wst: Stack, rst: Stack):
+        # ( a b -- a+b )
+        b, a = wst.pop(), wst.pop()
+        wst.push(a + b)
+
+    def SUB(self, wst: Stack, rst: Stack):
+        # ( a b -- a-b )
+        b, a = wst.pop(), wst.pop()
+        wst.push(a - b)
+
+    def MUL(self, wst: Stack, rst: Stack):
+        # ( a b -- a*b )
+        b, a = wst.pop(), wst.pop()
+        wst.push(a * b)
+
+    def DIV(self, wst: Stack, rst: Stack):
+        # ( a b -- a//b )
+        b, a = wst.pop(), wst.pop()
+        wst.push(a // b if b else 0)
+
+    def AND(self, wst: Stack, rst: Stack):
+        # ( a b -- a&b )
+        b, a = wst.pop(), wst.pop()
+        wst.push(a & b)
+
+    def ORA(self, wst: Stack, rst: Stack):
+        # ( a b -- a|b )
+        b, a = wst.pop(), wst.pop()
+        wst.push(a | b)
+
+    def EOR(self, wst: Stack, rst: Stack):
+        # ( a b -- ~(a^b) )
+        b, a = wst.pop(), wst.pop()
+        wst.push(a ^ b)
+
+    def SFT(self, wst: Stack, rst: Stack):
+        # ( a shift8 -- c )
+        shift8, a = wst.pop(short=False), wst.pop()
+        ls, rs = (shift8 >> 4) & 0x0F, shift8 & 0x0F
+        c = a >> rs
+        c = c << ls
+        wst.push(c)
+
+    # ruff: enable[N802,ARG002]
