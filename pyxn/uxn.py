@@ -99,7 +99,6 @@ class Mask(enum.IntEnum):
     SHORT = 0b00100000
     MODE = 0b11100000
     CODE = 0b00011111
-    LIT = 0b10000000
 
 
 class Op(enum.IntEnum):
@@ -233,8 +232,10 @@ class UXN:
         op = self.mem[self.pc]
         self.pc += 1
 
-        imm = op in (Op.JCI, Op.JMI, Op.JSI)
+        if op == Op.BRK:
+            return False
 
+        imm = op in (Op.JCI, Op.JMI, Op.JSI)
         if not imm and (op & Mask.RETURN):
             wst = self.rst
             rst = self.wst
@@ -247,82 +248,89 @@ class UXN:
             short=bool(not imm and (op & Mask.SHORT)),
         )
 
-        match op, (op & Mask.CODE), (op & Mask.LIT):
-            case Op.BRK, _, _:
-                return False
-            case Op.JCI, _, _:
-                # ( cond8 -- )
-                cond8 = wst.pop1()
-                if cond8:
+        if imm:
+            match op:
+                case Op.JCI:
+                    # ( cond8 -- )
+                    cond8 = wst.pop1()
+                    if cond8:
+                        addr16 = self.memget(self.pc, short=True)
+                        self.pc += 2 + signed2(addr16)
+                    else:
+                        self.pc += 2
+                case Op.JMI:
+                    # ( -- )
                     addr16 = self.memget(self.pc, short=True)
                     self.pc += 2 + signed2(addr16)
-                else:
-                    self.pc += 2
-            case Op.JMI, _, _:
-                # ( -- )
-                addr16 = self.memget(self.pc, short=True)
-                self.pc += 2 + signed2(addr16)
-            case Op.JSI, _, _:
-                # ( -- )
-                rst.push2(self.pc + 2)
-                addr16 = self.memget(self.pc, short=True)
-                self.pc += 2 + signed2(addr16)
-            case _, Op.INC, _:
+                case Op.JSI:
+                    # ( -- )
+                    rst.push2(self.pc + 2)
+                    addr16 = self.memget(self.pc, short=True)
+                    self.pc += 2 + signed2(addr16)
+            return True
+
+        match op & Mask.CODE:
+            case 0x00:  # LIT
+                # ( -- a )
+                a = self.memget(self.pc, short=wst.short)
+                wst.push(a)
+                self.pc += 2 if wst.short else 1
+            case Op.INC:
                 # ( a -- a+1 )
                 a = wst.pop() + 1
                 wst.push(a)
-            case _, Op.POP, _:
+            case Op.POP:
                 # ( a -- )
                 wst.pop()
-            case _, Op.NIP, _:
+            case Op.NIP:
                 # ( a b -- b )
                 b, _ = wst.pop(), wst.pop()
                 wst.push(b)
-            case _, Op.SWP, _:
+            case Op.SWP:
                 # ( a b -- b a )
                 b, a = wst.pop(), wst.pop()
                 wst.push(b)
                 wst.push(a)
-            case _, Op.ROT, _:
+            case Op.ROT:
                 # ( a b c -- b c a )
                 c, b, a = wst.pop(), wst.pop(), wst.pop()
                 wst.push(b)
                 wst.push(c)
                 wst.push(a)
-            case _, Op.DUP, _:
+            case Op.DUP:
                 # ( a -- a a )
                 a = wst.pop()
                 wst.push(a)
                 wst.push(a)
-            case _, Op.OVR, _:
+            case Op.OVR:
                 # ( a b -- a b a )
                 b, a = wst.pop(), wst.pop()
                 wst.push(a)
                 wst.push(b)
                 wst.push(a)
-            case _, Op.EQU, _:
+            case Op.EQU:
                 # ( a b -- bool8 )
                 b, a = wst.pop(), wst.pop()
                 wst.push1(a == b)
-            case _, Op.NEQ, _:
+            case Op.NEQ:
                 # ( a b -- bool8 )
                 b, a = wst.pop(), wst.pop()
                 wst.push1(a != b)
-            case _, Op.GTH, _:
+            case Op.GTH:
                 # ( a b -- bool8 )
                 b, a = wst.pop(), wst.pop()
                 wst.push1(a > b)
-            case _, Op.LTH, _:
+            case Op.LTH:
                 # ( a b -- bool8 )
                 b, a = wst.pop(), wst.pop()
                 wst.push1(a < b)
-            case _, Op.JMP, _:
+            case Op.JMP:
                 # ( addr -- )
                 if wst.short:
                     self.pc = wst.pop()
                 else:
                     self.pc += signed(wst.pop())
-            case _, Op.JCN, _:
+            case Op.JCN:
                 # ( cond8 addr -- )
                 addr = wst.pop()
                 cond8 = wst.pop1()
@@ -331,7 +339,7 @@ class UXN:
                         self.pc = addr
                     else:
                         self.pc += signed(addr)
-            case _, Op.JSR, _:
+            case Op.JSR:
                 # ( addr -- | ret16 )
                 ret16 = self.pc
                 rst.push2(ret16)
@@ -340,90 +348,85 @@ class UXN:
                     self.pc = addr
                 else:
                     self.pc += signed(addr)
-            case _, Op.STH, _:
+            case Op.STH:
                 # ( a -- | a )
                 a = wst.pop()
                 rst.push(a, short=wst.short)
-            case _, Op.LDZ, _:
+            case Op.LDZ:
                 # ( addr8 -- val )
                 addr8 = wst.pop1()
                 val = self.memget(addr8, short=wst.short)
                 wst.push(val)
-            case _, Op.STZ, _:
+            case Op.STZ:
                 # ( val addr8 -- )
                 addr8 = wst.pop1()
                 val = wst.pop()
                 self.memset(addr8, val, short=wst.short)
-            case _, Op.LDR, _:
+            case Op.LDR:
                 # ( addr8 -- val )
                 addr8 = wst.pop1()
                 val = self.memget(self.pc + signed(addr8), short=wst.short)
                 wst.push(val)
-            case _, Op.STR, _:
+            case Op.STR:
                 # ( val addr8 -- )
                 addr8 = wst.pop1()
                 val = wst.pop()
                 self.memset(self.pc + signed(addr8), val, short=wst.short)
-            case _, Op.LDA, _:
+            case Op.LDA:
                 # ( addr16 -- val )
                 addr16 = wst.pop2()
                 val = self.memget(addr16, short=wst.short)
                 wst.push(val)
-            case _, Op.STA, _:
+            case Op.STA:
                 # ( val addr16 -- )
                 addr16 = wst.pop2()
                 val = wst.pop()
                 self.memset(addr16, val, short=wst.short)
-            case _, Op.DEI, _:
+            case Op.DEI:
                 # ( dev8 -- val )
                 dev8 = wst.pop1()
                 val = self.dev.get(dev8, short=wst.short)
                 wst.push(val)
-            case _, Op.DEO, _:
+            case Op.DEO:
                 # ( val dev8 -- )
                 dev8 = wst.pop1()
                 val = wst.pop()
                 self.dev.set(dev8, val, short=wst.short)
-            case _, Op.ADD, _:
+            case Op.ADD:
                 # ( a b -- a+b )
                 b, a = wst.pop(), wst.pop()
                 wst.push(a + b)
-            case _, Op.SUB, _:
+            case Op.SUB:
                 # ( a b -- a-b )
                 b, a = wst.pop(), wst.pop()
                 wst.push(a - b)
-            case _, Op.MUL, _:
+            case Op.MUL:
                 # ( a b -- a*b )
                 b, a = wst.pop(), wst.pop()
                 wst.push(a * b)
-            case _, Op.DIV, _:
+            case Op.DIV:
                 # ( a b -- a//b )
                 b, a = wst.pop(), wst.pop()
                 wst.push(a // b if b else 0)
-            case _, Op.AND, _:
+            case Op.AND:
                 # ( a b -- a&b )
                 b, a = wst.pop(), wst.pop()
                 wst.push(a & b)
-            case _, Op.ORA, _:
+            case Op.ORA:
                 # ( a b -- a|b )
                 b, a = wst.pop(), wst.pop()
                 wst.push(a | b)
-            case _, Op.EOR, _:
+            case Op.EOR:
                 # ( a b -- ~(a^b) )
                 b, a = wst.pop(), wst.pop()
                 wst.push(a ^ b)
-            case _, Op.SFT, _:
+            case Op.SFT:
                 # ( a shift8 -- c )
                 shift8, a = wst.pop(short=False), wst.pop()
                 ls, rs = (shift8 >> 4) & 0x0F, shift8 & 0x0F
                 c = a >> rs
                 c = c << ls
                 wst.push(c)
-            case _, _, Op.LIT:
-                # ( -- a )
-                a = self.memget(self.pc, short=wst.short)
-                wst.push(a)
-                self.pc += 2 if wst.short else 1
             case _:
                 raise InvalidInstructionError(hex(op))
 
