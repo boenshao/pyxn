@@ -149,10 +149,9 @@ class Dev(enum.IntEnum):
 
 
 class Varvara:
-    def __init__(self, uxn: UXN):
+    def __init__(self, uxn: UXN, mem: memoryview):
         self.uxn = uxn
-        self.arr = bytearray(0x100)
-        self.mem = memoryview(self.arr)
+        self.mem = mem
         self.file = File()
 
         self.vtable = [None] * 0x100

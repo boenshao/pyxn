@@ -265,8 +265,8 @@ def test_uxn(rom: bytes, wst: bytes, rst: bytes, pc: int | None) -> None:
     uxn.reset()
 
     assert uxn.wst.top == len(wst)
-    assert uxn.wst.arr[: uxn.wst.top] == wst
+    assert uxn.wst.mem[: uxn.wst.top] == wst
     assert uxn.rst.top == len(rst)
-    assert uxn.rst.arr[: uxn.rst.top] == rst
+    assert uxn.rst.mem[: uxn.rst.top] == rst
     if pc is not None:
         assert uxn.pc == pc

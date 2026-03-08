@@ -1,4 +1,5 @@
 import enum
+import mmap
 from typing import TextIO
 
 from .varvara import ConsoleType, Dev, Varvara
@@ -17,16 +18,16 @@ class InvalidInstructionError(Exception):
 
 
 class Stack:
-    def __init__(self, maxsize: int):
-        self.size = maxsize
-        self.arr = bytearray(self.size)
+    def __init__(self, mem: memoryview):
+        self.mem = mem
+        self.size = len(mem)
         self.top = 0
         self.ptr = 0
         self.keep = False
         self.short = False
 
     def load(self, arr: bytes, *, keep: bool = False, short: bool = False):
-        self.arr[: len(arr)] = arr
+        self.mem[: len(arr)] = arr
         self.top = len(arr)
         self.ptr = self.top
         self.keep = keep
@@ -55,7 +56,7 @@ class Stack:
     def push1(self, x: int):
         if self.top >= self.size:
             raise StackOverflowError
-        self.arr[self.top] = x & 0xFF
+        self.mem[self.top] = x & 0xFF
         self.top += 1
 
     def pop1(self) -> int:
@@ -64,13 +65,13 @@ class Stack:
         self.ptr -= 1
         if not self.keep:
             self.top = self.ptr
-        return self.arr[self.ptr]
+        return self.mem[self.ptr]
 
     def push2(self, x: int):
         if self.top + 1 >= self.size:
             raise StackOverflowError
-        self.arr[self.top] = (x >> 8) & 0xFF
-        self.arr[self.top + 1] = x & 0xFF
+        self.mem[self.top] = (x >> 8) & 0xFF
+        self.mem[self.top + 1] = x & 0xFF
         self.top += 2
 
     def pop2(self) -> int:
@@ -79,18 +80,18 @@ class Stack:
         self.ptr -= 2
         if not self.keep:
             self.top = self.ptr
-        return (self.arr[self.ptr] << 8) | self.arr[self.ptr + 1]
+        return (self.mem[self.ptr] << 8) | self.mem[self.ptr + 1]
 
     def debug(self) -> str:
         s = "|" if self.top - 8 == 0 else " "
         for i in range(self.top - 8, self.top):
-            s += f"{self.arr[i]:02x}" if i >= 0 else "00"
+            s += f"{self.mem[i]:02x}" if i >= 0 else "00"
             s += "|" if i == -1 else " "
         s += f"<{self.top:02x}"
         return s
 
     def __repr__(self) -> str:
-        return str([hex(self.arr[i]) for i in range(self.top)])
+        return str([hex(self.mem[i]) for i in range(self.top)])
 
 
 class Mask(enum.IntEnum):
@@ -176,13 +177,26 @@ class UXN:
     PCSTART = 0x100
 
     def __init__(self):
-        self.dev = Varvara(self)
-        self.arr = bytearray(self.MEMSIZE * self.BNKSZIE)
-        self.mem = memoryview(self.arr)
-        self.wst = Stack(self.STKSIZE)
-        self.rst = Stack(self.STKSIZE)
-        self.pc = self.PCSTART
+        mm = mmap.mmap(
+            -1,
+            self.DEVSIZE  # device memory
+            + self.STKSIZE  # wst
+            + self.STKSIZE  # rst
+            + (self.MEMSIZE * self.BNKSZIE),  # main memory
+            mmap.MAP_PRIVATE | mmap.MAP_ANONYMOUS,
+        )
+        buf = memoryview(mm)
 
+        st, ed = 0, self.DEVSIZE
+        self.dev = Varvara(self, buf[st:ed])
+        st, ed = ed, ed + self.STKSIZE
+        self.wst = Stack(buf[st:ed])
+        st, ed = ed, ed + self.STKSIZE
+        self.rst = Stack(buf[st:ed])
+        st = ed
+        self.mem = buf[st:]
+
+        self.pc = self.PCSTART
         self.vtable = [None] * 0x100
         for op in Op:
             if op == Op.BRK:
