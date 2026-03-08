@@ -183,7 +183,7 @@ class UXN:
         self.rst = Stack(self.STKSIZE)
         self.pc = self.PCSTART
 
-        self.vtable = [None] * 256
+        self.vtable = [None] * 0x100
         for op in Op:
             if op == Op.BRK:
                 continue

@@ -155,6 +155,10 @@ class Varvara:
         self.mem = memoryview(self.arr)
         self.file = File()
 
+        self.vtable = [None] * 0x100
+        for dev in Dev:
+            self.vtable[dev] = getattr(self, dev.name, None)
+
     def set(self, addr: int, x: int, *, short: bool):
         if short:
             self.mem[addr] = (x >> 8) & 0xFF
@@ -162,60 +166,72 @@ class Varvara:
         else:
             self.mem[addr] = x
 
-        match addr:
-            case Dev.SYS_EXPANSION:
-                op = self.uxn.memget(x, short=False)
-                exp = self.uxn.memget(x + 1, short=True)
-                if op == 0x00:
-                    bank = self.uxn.memget(x + 3, short=True)
-                    addr = self.uxn.memget(x + 5, short=True)
-                    val = self.uxn.memget(x + 7, short=False)
-                    dst = bank * self.uxn.MEMSIZE + addr
-                    self.uxn.mem[dst : dst + exp] = val.to_bytes(1) * exp
-                else:
-                    sbank = self.uxn.memget(x + 3, short=True)
-                    saddr = self.uxn.memget(x + 5, short=True)
-                    dbank = self.uxn.memget(x + 7, short=True)
-                    daddr = self.uxn.memget(x + 9, short=True)
-                    src = sbank * self.uxn.MEMSIZE + saddr
-                    dst = dbank * self.uxn.MEMSIZE + daddr
-                    if op == 0x01:
-                        self.uxn.mem[dst : dst + exp] = self.uxn.mem[src : src + exp]
-                    else:
-                        for i in range(exp - 1, -1, -1):
-                            self.uxn.mem[dst + i] = self.uxn.mem[src + i]
-            case Dev.SYS_WST:
-                self.uxn.wst.top = x
-            case Dev.SYS_RST:
-                self.uxn.rst.top = x
-            case Dev.SYS_DEBUG:
-                if x != 0:
-                    print(f"WST{self.uxn.wst.debug()}")
-                    print(f"RST{self.uxn.rst.debug()}")
-            case Dev.CSL_WRITE:
-                sys.stdout.write(chr(x))
-            case Dev.FIL_NAME:
-                self.file.setname(self.uxn.mem[x:])
-            case Dev.FIL_READ:
-                ed = min(x + self.get(Dev.FIL_LENGTH, short=True), self.uxn.MEMSIZE)
-                sz = self.file.read(self.uxn.mem[x:ed])
-                self.set(Dev.FIL_SUCCESS, sz, short=True)
-            case Dev.FIL_WRITE:
-                ed = min(x + self.get(Dev.FIL_LENGTH, short=True), self.uxn.MEMSIZE)
-                sz = self.file.write(
-                    self.uxn.mem[x:ed],
-                    append=self.get(Dev.FIL_APPEND, short=True) != 0,
-                )
-                self.set(Dev.FIL_SUCCESS, sz, short=True)
-            case Dev.FIL_STAT:
-                ed = min(x + self.get(Dev.FIL_LENGTH, short=True), self.uxn.MEMSIZE)
-                sz = self.file.stat(self.uxn.mem[x:ed])
-                self.set(Dev.FIL_SUCCESS, sz, short=True)
-            case Dev.FIL_DELETE:
-                ok = self.file.delete()
-                self.set(Dev.FIL_SUCCESS, 1 if ok else 0, short=True)
-            case _:
-                pass
+        if f := self.vtable[addr]:
+            f(x)
+
+    # ruff: disable[N802]
+    def SYS_EXPANSION(self, x: int):
+        op = self.uxn.memget(x, short=False)
+        exp = self.uxn.memget(x + 1, short=True)
+        if op == 0x00:
+            bank = self.uxn.memget(x + 3, short=True)
+            addr = self.uxn.memget(x + 5, short=True)
+            val = self.uxn.memget(x + 7, short=False)
+            dst = bank * self.uxn.MEMSIZE + addr
+            self.uxn.mem[dst : dst + exp] = val.to_bytes(1) * exp
+        else:
+            sbank = self.uxn.memget(x + 3, short=True)
+            saddr = self.uxn.memget(x + 5, short=True)
+            dbank = self.uxn.memget(x + 7, short=True)
+            daddr = self.uxn.memget(x + 9, short=True)
+            src = sbank * self.uxn.MEMSIZE + saddr
+            dst = dbank * self.uxn.MEMSIZE + daddr
+            if op == 0x01:
+                self.uxn.mem[dst : dst + exp] = self.uxn.mem[src : src + exp]
+            else:
+                for i in range(exp - 1, -1, -1):
+                    self.uxn.mem[dst + i] = self.uxn.mem[src + i]
+
+    def SYS_WST(self, x: int):
+        self.uxn.wst.top = x
+
+    def SYS_RST(self, x: int):
+        self.uxn.rst.top = x
+
+    def SYS_DEBUG(self, x: int):
+        if x != 0:
+            print(f"WST{self.uxn.wst.debug()}")
+            print(f"RST{self.uxn.rst.debug()}")
+
+    def CSL_WRITE(self, x: int):
+        sys.stdout.write(chr(x))
+
+    def FIL_NAME(self, x: int):
+        self.file.setname(self.uxn.mem[x:])
+
+    def FIL_READ(self, x: int):
+        ed = min(x + self.get(Dev.FIL_LENGTH, short=True), self.uxn.MEMSIZE)
+        sz = self.file.read(self.uxn.mem[x:ed])
+        self.set(Dev.FIL_SUCCESS, sz, short=True)
+
+    def FIL_WRITE(self, x: int):
+        ed = min(x + self.get(Dev.FIL_LENGTH, short=True), self.uxn.MEMSIZE)
+        sz = self.file.write(
+            self.uxn.mem[x:ed],
+            append=self.get(Dev.FIL_APPEND, short=True) != 0,
+        )
+        self.set(Dev.FIL_SUCCESS, sz, short=True)
+
+    def FIL_STAT(self, x: int):
+        ed = min(x + self.get(Dev.FIL_LENGTH, short=True), self.uxn.MEMSIZE)
+        sz = self.file.stat(self.uxn.mem[x:ed])
+        self.set(Dev.FIL_SUCCESS, sz, short=True)
+
+    def FIL_DELETE(self, _: int):
+        ok = self.file.delete()
+        self.set(Dev.FIL_SUCCESS, 1 if ok else 0, short=True)
+
+    # ruff: enable[N802]
 
     def get(self, addr: int, *, short: bool) -> int:
         match addr:
