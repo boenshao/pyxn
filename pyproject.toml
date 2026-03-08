@@ -33,6 +33,7 @@ ignore = [
     "TRY003", # too pedantic
     "C901",   # too pedantic
     "BLE001", # too pedantic
+    "RUF023", # too pedantic
 ]
 
 [tool.ruff.lint.flake8-annotations]

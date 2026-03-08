@@ -18,6 +18,8 @@ class InvalidInstructionError(Exception):
 
 
 class Stack:
+    __slots__ = ("mem", "size", "top", "ptr", "keep", "short")
+
     def __init__(self, mem: memoryview):
         self.mem = mem
         self.size = len(mem)
@@ -170,6 +172,8 @@ def signed2(x: int) -> int:
 
 
 class UXN:
+    __slots__ = ("mem", "dev", "wst", "rst", "pc", "vtable")
+
     BNKSZIE = 0x10  # 16
     MEMSIZE = 0x10000  # 65536, 64k
     DEVSIZE = 0x100  # 256
@@ -251,6 +255,13 @@ class UXN:
             return (self.mem[addr] << 8) | self.mem[addr + 1]
         return self.mem[addr]
 
+    def eval(self, addr: int):
+        self.pc = addr
+        while self.step():
+            ...
+        if (ret := self.dev.mem[Dev.SYS_STATE]) != 0:
+            exit(ret & 0x7F)
+
     def step(self) -> bool:
         op = self.mem[self.pc]
         self.pc += 1
@@ -260,11 +271,9 @@ class UXN:
 
         imm = op in IMM
         if not imm and (op & Mask.RETURN):
-            wst = self.rst
-            rst = self.wst
+            wst, rst = self.rst, self.wst
         else:
-            wst = self.wst
-            rst = self.rst
+            wst, rst = self.wst, self.rst
 
         wst.modeset(
             keep=bool(not imm and (op & Mask.KEEP)),
@@ -281,19 +290,12 @@ class UXN:
 
         return True
 
-    def eval(self, addr: int):
-        self.pc = addr
-        while self.step():
-            ...
-        if (ret := self.dev.mem[Dev.SYS_STATE]) != 0:
-            exit(ret & 0x7F)
-
     # ruff: disable[N802,ARG002]
     def LIT(self, wst: Stack, rst: Stack):
         # ( -- a )
         a = self.memget(self.pc, short=wst.short)
         wst.push(a)
-        self.pc += 2 if wst.short else 1
+        self.pc += 1 + wst.short
 
     def JCI(self, wst: Stack, rst: Stack):
         # ( cond8 -- )
@@ -473,7 +475,7 @@ class UXN:
     def DIV(self, wst: Stack, rst: Stack):
         # ( a b -- a//b )
         b, a = wst.pop(), wst.pop()
-        wst.push(a // b if b else 0)
+        wst.push(b and a // b)
 
     def AND(self, wst: Stack, rst: Stack):
         # ( a b -- a&b )

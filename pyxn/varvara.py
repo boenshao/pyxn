@@ -20,6 +20,8 @@ def stat(p: pathlib.Path) -> str:
 
 
 class File:
+    __slots__ = ("cwd", "name", "state", "buffer")
+
     class State(enum.IntEnum):
         IDLE = 0
         FILE_READ = 1
@@ -149,6 +151,8 @@ class Dev(enum.IntEnum):
 
 
 class Varvara:
+    __slots__ = ("uxn", "mem", "file", "vtable")
+
     def __init__(self, uxn: UXN, mem: memoryview):
         self.uxn = uxn
         self.mem = mem
@@ -157,6 +161,17 @@ class Varvara:
         self.vtable = [None] * 0x100
         for dev in Dev:
             self.vtable[dev] = getattr(self, dev.name, None)
+
+    def get(self, addr: int, *, short: bool) -> int:
+        match addr:
+            case Dev.SYS_WST:
+                self.mem[addr] = self.uxn.wst.top
+            case Dev.SYS_RST:
+                self.mem[addr] = self.uxn.rst.top
+
+        if short:
+            return (self.mem[addr] << 8) | self.mem[addr + 1]
+        return self.mem[addr]
 
     def set(self, addr: int, x: int, *, short: bool):
         if short:
@@ -172,13 +187,8 @@ class Varvara:
     def SYS_EXPANSION(self, x: int):
         op = self.uxn.memget(x, short=False)
         exp = self.uxn.memget(x + 1, short=True)
-        if op == 0x00:
-            bank = self.uxn.memget(x + 3, short=True)
-            addr = self.uxn.memget(x + 5, short=True)
-            val = self.uxn.memget(x + 7, short=False)
-            dst = bank * self.uxn.MEMSIZE + addr
-            self.uxn.mem[dst : dst + exp] = val.to_bytes(1) * exp
-        else:
+        if op:
+            # 0x01, 0x02
             sbank = self.uxn.memget(x + 3, short=True)
             saddr = self.uxn.memget(x + 5, short=True)
             dbank = self.uxn.memget(x + 7, short=True)
@@ -190,6 +200,13 @@ class Varvara:
             else:
                 for i in range(exp - 1, -1, -1):
                     self.uxn.mem[dst + i] = self.uxn.mem[src + i]
+        else:
+            # 0x00
+            bank = self.uxn.memget(x + 3, short=True)
+            addr = self.uxn.memget(x + 5, short=True)
+            val = self.uxn.memget(x + 7, short=False)
+            dst = bank * self.uxn.MEMSIZE + addr
+            self.uxn.mem[dst : dst + exp] = val.to_bytes(1) * exp
 
     def SYS_WST(self, x: int):
         self.uxn.wst.top = x
@@ -228,17 +245,6 @@ class Varvara:
 
     def FIL_DELETE(self, _: int):
         ok = self.file.delete()
-        self.set(Dev.FIL_SUCCESS, 1 if ok else 0, short=True)
+        self.set(Dev.FIL_SUCCESS, ok, short=True)
 
     # ruff: enable[N802]
-
-    def get(self, addr: int, *, short: bool) -> int:
-        match addr:
-            case Dev.SYS_WST:
-                self.mem[addr] = self.uxn.wst.top
-            case Dev.SYS_RST:
-                self.mem[addr] = self.uxn.rst.top
-
-        if short:
-            return (self.mem[addr] << 8) | self.mem[addr + 1]
-        return self.mem[addr]
