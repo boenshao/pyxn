@@ -222,6 +222,9 @@ class Varvara:
     def CSL_WRITE(self, x: int):
         sys.stdout.write(chr(x))
 
+    def CSL_ERROR(self, x: int):
+        sys.stderr.write(chr(x))
+
     def FIL_NAME(self, x: int):
         self.file.setname(self.uxn.mem[x:])
 
