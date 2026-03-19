@@ -2,6 +2,7 @@ import enum
 import io
 import pathlib
 import sys
+import time
 import typing
 
 if typing.TYPE_CHECKING:
@@ -149,6 +150,27 @@ class Dev(enum.IntEnum):
     FIL_READ = 0xAC
     FIL_WRITE = 0xAE
 
+    DAT_YEAR_H = 0xC0
+    DAT_YEAR_L = 0xC1
+    DAT_MONTH = 0xC2
+    DAT_DAY = 0xC3
+    DAT_HOUR = 0xC4
+    DAT_MINIUTE = 0xC5
+    DAT_SECOND = 0xC6
+    DAT_DOTW = 0xC7
+    DAT_DOTY_H = 0xC8
+    DAT_DOTY_L = 0xC9
+    DAT_ISDST = 0xCA
+
+
+def t() -> time.struct_time:
+    # Python's struct_time is different from C's struct_time
+    # tm_year already has +1900
+    # tm_mon is [1-12], not [0-11]
+    # tm_wday starts on Monday, not Sunday
+    # tm_yday is [1-366], not [0-365]
+    return time.localtime()
+
 
 class Varvara:
     __slots__ = ("uxn", "mem", "file", "vtable")
@@ -168,6 +190,28 @@ class Varvara:
                 self.mem[addr] = self.uxn.wst.top
             case Dev.SYS_RST:
                 self.mem[addr] = self.uxn.rst.top
+            case Dev.DAT_YEAR_H | Dev.DAT_YEAR_L:
+                y = t().tm_year
+                self.mem[Dev.DAT_YEAR_H] = y >> 8
+                self.mem[Dev.DAT_YEAR_L] = y & 0xFF
+            case Dev.DAT_DAY:
+                self.mem[addr] = t().tm_mday
+            case Dev.DAT_MONTH:
+                self.mem[addr] = t().tm_mon - 1
+            case Dev.DAT_HOUR:
+                self.mem[addr] = t().tm_hour
+            case Dev.DAT_MINIUTE:
+                self.mem[addr] = t().tm_min
+            case Dev.DAT_SECOND:
+                self.mem[addr] = t().tm_sec
+            case Dev.DAT_DOTW:
+                return (t().tm_wday + 1) % 7
+            case Dev.DAT_DOTY_H | Dev.DAT_DOTY_L:
+                d = t().tm_yday - 1
+                self.mem[Dev.DAT_DOTY_H] = d >> 8
+                self.mem[Dev.DAT_DOTY_L] = d & 0xFF
+            case Dev.DAT_ISDST:
+                self.mem[addr] = t().tm_isdst
 
         if short:
             return (self.mem[addr] << 8) | self.mem[addr + 1]
