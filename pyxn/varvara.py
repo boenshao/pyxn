@@ -1,15 +1,15 @@
 import enum
 import io
-import pathlib
 import sys
 import time
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .uxn import UXN
 
 
-def stat(p: pathlib.Path) -> str:
+def stat(p: Path) -> str:
     if p.is_dir():
         return "----"
     if p.is_file():
@@ -31,7 +31,7 @@ class File:
         DIR_WRITE = 4
 
     def __init__(self):
-        self.cwd = pathlib.Path.cwd().absolute()
+        self.cwd = Path.cwd().absolute()
         self.name = ""
         self.state = self.State.IDLE
         self.buffer = None
@@ -40,16 +40,14 @@ class File:
         name = mem.tobytes()
         name = name[: name.find(0)]
         name = name.decode("utf-8")
-        if self.name == name:
-            return
-        self.name = name
         self.state = self.State.IDLE
         if self.buffer:
             self.buffer.close()
             self.buffer = None
+        self.name = name
 
-    def check(self) -> pathlib.Path | None:
-        p = pathlib.Path(self.name).absolute()
+    def check(self) -> Path | None:
+        p = Path(self.name).absolute()
         if not p.is_relative_to(self.cwd):
             # only allow access to files under the current working directory
             return None
@@ -64,7 +62,10 @@ class File:
                 self.state = self.State.FILE_READ
             elif p.is_dir() and self.state != self.State.DIR_READ:
                 self.buffer = io.BytesIO(
-                    "".join(f"{stat(f)} {f.name}\n" for f in p.iterdir()).encode()
+                    "".join(
+                        f"{stat(f)} {f.name}{'/' if f.is_dir() else ''}\n"
+                        for f in p.iterdir()
+                    ).encode()
                 )
                 self.state = self.State.DIR_READ
             if not self.buffer:
@@ -260,8 +261,8 @@ class Varvara:
 
     def SYSTEM_DEBUG(self, x: int):
         if x != 0:
-            print(f"WST{self.uxn.wst.debug()}")
-            print(f"RST{self.uxn.rst.debug()}")
+            sys.stderr.write(f"WST{self.uxn.wst.debug()}\n")
+            sys.stderr.write(f"RST{self.uxn.rst.debug()}\n")
 
     def CONSOLE_WRITE(self, x: int):
         sys.stdout.write(chr(x))
@@ -281,7 +282,7 @@ class Varvara:
         ed = min(x + self.get(Dev.FILE_LENGTH, short=True), self.uxn.MEMSIZE)
         sz = self.file.write(
             self.uxn.mem[x:ed],
-            append=self.get(Dev.FILE_APPEND, short=True) != 0,
+            append=self.get(Dev.FILE_APPEND, short=False) != 0,
         )
         self.set(Dev.FILE_SUCCESS, sz, short=True)
 
