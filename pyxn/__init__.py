@@ -1,2 +1,2 @@
-from .uxn import UXN, Mask, Op
+from .uxn import UXN, Op
 from .varvara import Dev, Varvara

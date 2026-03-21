@@ -2,7 +2,7 @@
 
 from pytest_cases import parametrize, parametrize_with_cases
 
-from pyxn import UXN, Mask, Op
+from pyxn.uxn import UXN, Mask, Op
 
 CASES = [
 # asm                        |r| wst                                 | rst   | pc

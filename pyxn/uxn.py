@@ -212,17 +212,17 @@ class UXN:
 
     def reset(self, args: list[str] | None = None, stdin: TextIO | None = None):
         args = args or []
-        self.dev.set(Dev.CSL_TYPE, len(args) > 2, short=False)
+        self.dev.set(Dev.CONSOLE_TYPE, len(args) > 2, short=False)
         self.eval(self.PCSTART)
-        if self.dev.get(Dev.CSL_VECTOR, short=True):
+        if self.dev.get(Dev.CONSLOE_VECTOR, short=True):
             self._console_parse_args(args)
         if stdin:
             self._console_read_stdin(stdin)
 
     def _console_input(self, c: int, t: ConsoleType):
-        self.dev.set(Dev.CSL_TYPE, t, short=False)
-        self.dev.set(Dev.CSL_READ, c, short=False)
-        self.dev.uxn.eval(self.dev.get(Dev.CSL_VECTOR, short=True))
+        self.dev.set(Dev.CONSOLE_TYPE, t, short=False)
+        self.dev.set(Dev.CONSOLE_READ, c, short=False)
+        self.dev.uxn.eval(self.dev.get(Dev.CONSLOE_VECTOR, short=True))
 
     def _console_parse_args(self, args: list[str]):
         for i in range(2, len(args)):
@@ -259,7 +259,7 @@ class UXN:
         self.pc = addr
         while self.step():
             ...
-        if (ret := self.dev.mem[Dev.SYS_STATE]) != 0:
+        if (ret := self.dev.mem[Dev.SYSTEM_STATE]) != 0:
             exit(ret & 0x7F)
 
     def step(self) -> bool:

@@ -3,9 +3,9 @@ import io
 import pathlib
 import sys
 import time
-import typing
+from typing import TYPE_CHECKING
 
-if typing.TYPE_CHECKING:
+if TYPE_CHECKING:
     from .uxn import UXN
 
 
@@ -124,43 +124,43 @@ class ConsoleType(enum.IntEnum):
 
 
 class Dev(enum.IntEnum):
-    SYS_EXPANSION = 0x02
-    SYS_WST = 0x04
-    SYS_RST = 0x05
-    SYS_METADATA = 0x06
-    SYS_RED = 0x08
-    SYS_GREEN = 0x0A
-    SYS_BLUE = 0x0C
-    SYS_DEBUG = 0x0E
-    SYS_STATE = 0x0F
+    SYSTEM_EXPANSION = 0x02
+    SYSTEM_WST = 0x04
+    SYSTEM_RST = 0x05
+    SYSTEM_METADATA = 0x06
+    SYSTEM_RED = 0x08
+    SYSTEM_GREEN = 0x0A
+    SYSTEM_BLUE = 0x0C
+    SYSTEM_DEBUG = 0x0E
+    SYSTEM_STATE = 0x0F
 
-    CSL_VECTOR = 0x10
-    CSL_READ = 0x12
-    CSL_TYPE = 0x17
-    CSL_WRITE = 0x18
-    CSL_ERROR = 0x19
+    CONSLOE_VECTOR = 0x10
+    CONSOLE_READ = 0x12
+    CONSOLE_TYPE = 0x17
+    CONSOLE_WRITE = 0x18
+    CONSOLE_ERROR = 0x19
 
-    FIL_VECTOR = 0xA0
-    FIL_SUCCESS = 0xA2
-    FIL_STAT = 0xA4
-    FIL_DELETE = 0xA6
-    FIL_APPEND = 0xA7
-    FIL_NAME = 0xA8
-    FIL_LENGTH = 0xAA
-    FIL_READ = 0xAC
-    FIL_WRITE = 0xAE
+    FILE_VECTOR = 0xA0
+    FILE_SUCCESS = 0xA2
+    FILE_STAT = 0xA4
+    FILE_DELETE = 0xA6
+    FILE_APPEND = 0xA7
+    FILE_NAME = 0xA8
+    FILE_LENGTH = 0xAA
+    FILE_READ = 0xAC
+    FILE_WRITE = 0xAE
 
-    DAT_YEAR_H = 0xC0
-    DAT_YEAR_L = 0xC1
-    DAT_MONTH = 0xC2
-    DAT_DAY = 0xC3
-    DAT_HOUR = 0xC4
-    DAT_MINIUTE = 0xC5
-    DAT_SECOND = 0xC6
-    DAT_DOTW = 0xC7
-    DAT_DOTY_H = 0xC8
-    DAT_DOTY_L = 0xC9
-    DAT_ISDST = 0xCA
+    DATETIME_YEAR_H = 0xC0
+    DATETIME_YEAR_L = 0xC1
+    DATETIME_MONTH = 0xC2
+    DATETIME_DAY = 0xC3
+    DATETIME_HOUR = 0xC4
+    DATETIME_MINIUTE = 0xC5
+    DATETIME_SECOND = 0xC6
+    DATETIME_DOTW = 0xC7
+    DATETIME_DOTY_H = 0xC8
+    DATETIME_DOTY_L = 0xC9
+    DATETIME_ISDST = 0xCA
 
 
 def t() -> time.struct_time:
@@ -186,31 +186,31 @@ class Varvara:
 
     def get(self, addr: int, *, short: bool) -> int:
         match addr:
-            case Dev.SYS_WST:
+            case Dev.SYSTEM_WST:
                 self.mem[addr] = self.uxn.wst.top
-            case Dev.SYS_RST:
+            case Dev.SYSTEM_RST:
                 self.mem[addr] = self.uxn.rst.top
-            case Dev.DAT_YEAR_H | Dev.DAT_YEAR_L:
+            case Dev.DATETIME_YEAR_H | Dev.DATETIME_YEAR_L:
                 y = t().tm_year
-                self.mem[Dev.DAT_YEAR_H] = y >> 8
-                self.mem[Dev.DAT_YEAR_L] = y & 0xFF
-            case Dev.DAT_DAY:
+                self.mem[Dev.DATETIME_YEAR_H] = y >> 8
+                self.mem[Dev.DATETIME_YEAR_L] = y & 0xFF
+            case Dev.DATETIME_DAY:
                 self.mem[addr] = t().tm_mday
-            case Dev.DAT_MONTH:
+            case Dev.DATETIME_MONTH:
                 self.mem[addr] = t().tm_mon - 1
-            case Dev.DAT_HOUR:
+            case Dev.DATETIME_HOUR:
                 self.mem[addr] = t().tm_hour
-            case Dev.DAT_MINIUTE:
+            case Dev.DATETIME_MINIUTE:
                 self.mem[addr] = t().tm_min
-            case Dev.DAT_SECOND:
+            case Dev.DATETIME_SECOND:
                 self.mem[addr] = t().tm_sec
-            case Dev.DAT_DOTW:
+            case Dev.DATETIME_DOTW:
                 return (t().tm_wday + 1) % 7
-            case Dev.DAT_DOTY_H | Dev.DAT_DOTY_L:
+            case Dev.DATETIME_DOTY_H | Dev.DATETIME_DOTY_L:
                 d = t().tm_yday - 1
-                self.mem[Dev.DAT_DOTY_H] = d >> 8
-                self.mem[Dev.DAT_DOTY_L] = d & 0xFF
-            case Dev.DAT_ISDST:
+                self.mem[Dev.DATETIME_DOTY_H] = d >> 8
+                self.mem[Dev.DATETIME_DOTY_L] = d & 0xFF
+            case Dev.DATETIME_ISDST:
                 self.mem[addr] = t().tm_isdst
 
         if short:
@@ -228,7 +228,7 @@ class Varvara:
             f(x)
 
     # ruff: disable[N802]
-    def SYS_EXPANSION(self, x: int):
+    def SYSTEM_EXPANSION(self, x: int):
         op = self.uxn.memget(x, short=False)
         exp = self.uxn.memget(x + 1, short=True)
         if op:
@@ -252,46 +252,46 @@ class Varvara:
             dst = bank * self.uxn.MEMSIZE + addr
             self.uxn.mem[dst : dst + exp] = val.to_bytes(1) * exp
 
-    def SYS_WST(self, x: int):
+    def SYSTEM_WST(self, x: int):
         self.uxn.wst.top = x
 
-    def SYS_RST(self, x: int):
+    def SYSTEM_RST(self, x: int):
         self.uxn.rst.top = x
 
-    def SYS_DEBUG(self, x: int):
+    def SYSTEM_DEBUG(self, x: int):
         if x != 0:
             print(f"WST{self.uxn.wst.debug()}")
             print(f"RST{self.uxn.rst.debug()}")
 
-    def CSL_WRITE(self, x: int):
+    def CONSOLE_WRITE(self, x: int):
         sys.stdout.write(chr(x))
 
-    def CSL_ERROR(self, x: int):
+    def CONSOLE_ERROR(self, x: int):
         sys.stderr.write(chr(x))
 
-    def FIL_NAME(self, x: int):
+    def FILE_NAME(self, x: int):
         self.file.setname(self.uxn.mem[x:])
 
-    def FIL_READ(self, x: int):
-        ed = min(x + self.get(Dev.FIL_LENGTH, short=True), self.uxn.MEMSIZE)
+    def FILE_READ(self, x: int):
+        ed = min(x + self.get(Dev.FILE_LENGTH, short=True), self.uxn.MEMSIZE)
         sz = self.file.read(self.uxn.mem[x:ed])
-        self.set(Dev.FIL_SUCCESS, sz, short=True)
+        self.set(Dev.FILE_SUCCESS, sz, short=True)
 
-    def FIL_WRITE(self, x: int):
-        ed = min(x + self.get(Dev.FIL_LENGTH, short=True), self.uxn.MEMSIZE)
+    def FILE_WRITE(self, x: int):
+        ed = min(x + self.get(Dev.FILE_LENGTH, short=True), self.uxn.MEMSIZE)
         sz = self.file.write(
             self.uxn.mem[x:ed],
-            append=self.get(Dev.FIL_APPEND, short=True) != 0,
+            append=self.get(Dev.FILE_APPEND, short=True) != 0,
         )
-        self.set(Dev.FIL_SUCCESS, sz, short=True)
+        self.set(Dev.FILE_SUCCESS, sz, short=True)
 
-    def FIL_STAT(self, x: int):
-        ed = min(x + self.get(Dev.FIL_LENGTH, short=True), self.uxn.MEMSIZE)
+    def FILE_STAT(self, x: int):
+        ed = min(x + self.get(Dev.FILE_LENGTH, short=True), self.uxn.MEMSIZE)
         sz = self.file.stat(self.uxn.mem[x:ed])
-        self.set(Dev.FIL_SUCCESS, sz, short=True)
+        self.set(Dev.FILE_SUCCESS, sz, short=True)
 
-    def FIL_DELETE(self, _: int):
+    def FILE_DELETE(self, _: int):
         ok = self.file.delete()
-        self.set(Dev.FIL_SUCCESS, ok, short=True)
+        self.set(Dev.FILE_SUCCESS, ok, short=True)
 
     # ruff: enable[N802]
